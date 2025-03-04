@@ -1,0 +1,223 @@
+local player = game.Players.LocalPlayer
+local userInput = game:GetService("UserInputService")
+local espObjects = {}
+local speedEnabled = false
+local espEnabled = false
+local minSpeed = 5
+local maxSpeed = 200
+local dragging = false
+
+-- Переменные для восстановления состояния после смерти
+local speedValue = 50  -- Начальное значение скорости (по умолчанию 50)
+
+-- Создание GUI
+local function createGUI()
+    local char = player.Character or player.CharacterAdded:Wait()
+    local hrp = char:WaitForChild("HumanoidRootPart")
+    local humanoid = char:WaitForChild("Humanoid")
+
+    -- Создание GUI
+    local gui = Instance.new("ScreenGui", player:FindFirstChildOfClass("PlayerGui"))
+    local frame = Instance.new("Frame", gui)
+    frame.Size = UDim2.new(0, 300, 0, 250)  -- Увеличил размер фрейма
+    frame.Position = UDim2.new(0, 0, 0.2, 0)
+    frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)  -- Темно-серый фон
+    frame.Active = true
+    frame.Draggable = true
+
+    local title = Instance.new("TextLabel", frame)
+    title.Size = UDim2.new(1, 0, 0, 30)
+    title.Text = "Speed Mixer"
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.BackgroundColor3 = Color3.fromRGB(60, 60, 60)  -- Фон темно-серый
+    title.Font = Enum.Font.SourceSansBold
+    title.TextSize = 20
+
+    -- Кнопка сворачивания
+    local minimizeButton = Instance.new("TextButton", frame)
+    minimizeButton.Size = UDim2.new(0, 30, 0, 30)
+    minimizeButton.Position = UDim2.new(1, -35, 0, 0)
+    minimizeButton.Text = "-"
+    minimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    minimizeButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+    minimizeButton.Font = Enum.Font.SourceSansBold
+    minimizeButton.TextSize = 18
+
+    -- Иконка для разворачивания
+    local restoreButton = Instance.new("TextButton", gui)
+    restoreButton.Size = UDim2.new(0, 30, 0, 30)
+    restoreButton.Position = UDim2.new(0, 10, 0, 10)
+    restoreButton.Text = "+"
+    restoreButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    restoreButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+    restoreButton.Font = Enum.Font.SourceSansBold
+    restoreButton.TextSize = 18
+    restoreButton.Visible = false
+
+    -- Логика кнопок сворачивания/разворачивания
+    minimizeButton.MouseButton1Click:Connect(function()
+        frame.Visible = false
+        restoreButton.Visible = true
+    end)
+
+    restoreButton.MouseButton1Click:Connect(function()
+        frame.Visible = true
+        restoreButton.Visible = false
+    end)
+
+    -- Поле ввода для скорости
+    local speedInputBox = Instance.new("TextBox", frame)
+    speedInputBox.Size = UDim2.new(1, -20, 0, 30)
+    speedInputBox.Position = UDim2.new(0, 10, 0, 40)
+    speedInputBox.Text = tostring(speedValue)  -- Значение по умолчанию
+    speedInputBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+    speedInputBox.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+    speedInputBox.Font = Enum.Font.SourceSansBold
+    speedInputBox.TextSize = 18
+    speedInputBox.ClearTextOnFocus = false
+
+    local speedLabel = Instance.new("TextLabel", frame)
+    speedLabel.Size = UDim2.new(1, -20, 0, 30)
+    speedLabel.Position = UDim2.new(0, 10, 0, 70)
+    speedLabel.Text = "Speed: " .. speedValue
+    speedLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    speedLabel.BackgroundColor3 = Color3.fromRGB(50, 50, 50)  -- Темно-серый фон
+    speedLabel.Font = Enum.Font.SourceSansBold
+    speedLabel.TextSize = 18
+
+    -- Кнопка переключения SpeedHack
+    local toggleButton = Instance.new("TextButton", frame)
+    toggleButton.Size = UDim2.new(1, -20, 0, 30)
+    toggleButton.Position = UDim2.new(0, 10, 0, 110)
+    toggleButton.Text = "SpeedHack: OFF"
+    toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    toggleButton.BackgroundColor3 = Color3.fromRGB(120, 80, 120)  -- Серо-фиолетовая кнопка
+    toggleButton.Font = Enum.Font.SourceSansBold
+    toggleButton.TextSize = 18
+
+    local espButton = Instance.new("TextButton", frame)
+    espButton.Size = UDim2.new(1, -20, 0, 30)
+    espButton.Position = UDim2.new(0, 10, 0, 150)
+    espButton.Text = "ESP: OFF"
+    espButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    espButton.BackgroundColor3 = Color3.fromRGB(120, 80, 120)  -- Серо-фиолетовая кнопка
+    espButton.Font = Enum.Font.SourceSansBold
+    espButton.TextSize = 18
+
+    -- Логика для ввода скорости
+    speedInputBox.FocusLost:Connect(function()
+        local inputValue = tonumber(speedInputBox.Text)
+        if inputValue then
+            speedValue = math.clamp(inputValue, minSpeed, 200)  -- Ограничиваем значение скорости
+            speedLabel.Text = "Speed: " .. speedValue
+        else
+            speedInputBox.Text = tostring(speedValue)  -- Если введено некорректное значение, восстанавливаем старое
+        end
+    end)
+
+    -- Функция изменения скорости
+    local function applySpeed()
+        while speedEnabled do
+            wait(0.02)
+            if humanoid and player.Character then
+                local moveDirection = humanoid.MoveDirection
+                if moveDirection.Magnitude > 0 then
+                    hrp.Velocity = moveDirection * speedValue
+                else
+                    hrp.Velocity = Vector3.new(0, 0, 0)
+                end
+            end
+        end
+    end
+
+    -- Логика для включения/выключения SpeedHack
+    toggleButton.MouseButton1Click:Connect(function()
+        speedEnabled = not speedEnabled
+        if speedEnabled then
+            toggleButton.Text = "SpeedHack: ON"
+            toggleButton.BackgroundColor3 = Color3.fromRGB(80, 160, 80)
+            applySpeed()
+        else
+            toggleButton.Text = "SpeedHack: OFF"
+            toggleButton.BackgroundColor3 = Color3.fromRGB(120, 80, 120)
+            hrp.Velocity = Vector3.new(0, 0, 0)
+        end
+    end)
+
+    -- Функция обновления ESP
+    local function updateESP()
+        for _, obj in pairs(espObjects) do
+            if obj then
+                obj:Destroy()
+            end
+        end
+        espObjects = {}
+        if espEnabled then
+            for _, plr in pairs(game.Players:GetPlayers()) do
+                if plr ~= player and plr.Character then
+                    local char = plr.Character
+                    local espBox = Instance.new("Highlight")
+                    espBox.Parent = char
+                    espBox.FillColor = Color3.fromRGB(255, 0, 0)
+                    espBox.OutlineColor = Color3.fromRGB(255, 255, 255)
+                    espObjects[plr] = espBox
+                end
+            end
+        end
+    end
+
+    -- Обновление ESP при подключении новых игроков
+    game.Players.PlayerAdded:Connect(function(plr)
+        plr.CharacterAdded:Connect(function()
+            if espEnabled then
+                wait(0.5)
+                updateESP()
+            end
+        end)
+    end)
+
+    espButton.MouseButton1Click:Connect(function()
+        espEnabled = not espEnabled
+        espButton.Text = espEnabled and "ESP: ON" or "ESP: OFF"
+        espButton.BackgroundColor3 = espEnabled and Color3.fromRGB(80, 160, 80) or Color3.fromRGB(120, 80, 120)
+        updateESP()
+    end)
+
+    -- Кнопка выключения скрипта
+    local closeButton = Instance.new("TextButton", frame)
+    closeButton.Size = UDim2.new(1, -20, 0, 30)
+    closeButton.Position = UDim2.new(0, 10, 0, 180)
+    closeButton.Text = "Exit Script"
+    closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeButton.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+    closeButton.Font = Enum.Font.SourceSansBold
+    closeButton.TextSize = 18
+
+    closeButton.MouseButton1Click:Connect(function()
+        -- Удаляем GUI и отключаем обработку
+        gui:Destroy()
+        speedEnabled = false
+        espEnabled = false
+        hrp.Velocity = Vector3.new(0, 0, 0)
+    end)
+
+end
+
+-- Восстановление интерфейса и функций после смерти персонажа
+player.CharacterAdded:Connect(function()
+    -- Удаляем старые объекты ESP и сбрасываем флаг ESP
+    for _, obj in pairs(espObjects) do
+        if obj then
+            obj:Destroy()
+        end
+    end
+    espObjects = {}
+    espEnabled = false
+
+    -- Восстановление значения скорости и других переменных
+    speedValue = 50
+    createGUI()
+end)
+
+-- Инициализация интерфейса при первом запуске
+createGUI()
